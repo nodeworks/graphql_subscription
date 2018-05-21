@@ -1,0 +1,5 @@
+services:
+  graphql_subscription.event_subscriber:
+    class: '\Drupal\graphql_subscription\EventSubscriber\GraphQLSubscriptionEventSubscriber'
+    tags:
+      - { name: 'event_subscriber' }

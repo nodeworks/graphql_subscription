@@ -1,0 +1,664 @@
+Index: web/modules/contrib/graphql/src/Plugin/GraphQL/Subscriptions/SubscriptionPluginBase.php
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- web/modules/contrib/graphql/src/Plugin/GraphQL/Subscriptions/SubscriptionPluginBase.php	(date 1526883310000)
++++ web/modules/contrib/graphql/src/Plugin/GraphQL/Subscriptions/SubscriptionPluginBase.php	(date 1526883310000)
+@@ -0,0 +1,49 @@
++<?php
++
++namespace Drupal\graphql\Plugin\GraphQL\Subscriptions;
++
++use Drupal\Component\Plugin\PluginBase;
++use Drupal\graphql\Plugin\SubscriptionPluginInterface;
++use Drupal\graphql\Plugin\SubscriptionPluginManager;
++use Drupal\graphql\Plugin\GraphQL\Traits\ArgumentAwarePluginTrait;
++use Drupal\graphql\Plugin\GraphQL\Traits\DeprecatablePluginTrait;
++use Drupal\graphql\Plugin\GraphQL\Traits\DescribablePluginTrait;
++use Drupal\graphql\Plugin\GraphQL\Traits\TypedPluginTrait;
++use Drupal\graphql\Plugin\SchemaBuilderInterface;
++
++abstract class SubscriptionPluginBase extends PluginBase implements SubscriptionPluginInterface {
++  use TypedPluginTrait;
++  use DescribablePluginTrait;
++  use ArgumentAwarePluginTrait;
++  use DeprecatablePluginTrait;
++
++  /**
++   * {@inheritdoc}
++   */
++  public static function createInstance(SchemaBuilderInterface $builder, SubscriptionPluginManager $manager, $definition, $id) {
++    return [
++      'description' => $definition['description'],
++      'deprecationReason' => $definition['deprecationReason'],
++      'type' => $builder->processType($definition['type']),
++      'args' => $builder->processArguments($definition['args']),
++      'resolve' => function ($value, $args, $context, $info) use ($manager, $id) {
++        $instance = $manager->getInstance(['id' => $id]);
++        return call_user_func_array([$instance, 'resolve'], [$value, $args, $context, $info]);
++      },
++    ];
++  }
++
++  /**
++   * {@inheritdoc}
++   */
++  public function getDefinition() {
++    $definition = $this->getPluginDefinition();
++
++    return [
++      'type' => $this->buildType($definition),
++      'description' => $this->buildDescription($definition),
++      'args' => $this->buildArguments($definition),
++      'deprecationReason' => $this->buildDeprecationReason($definition),
++    ];
++  }
++}
+Index: web/modules/contrib/graphql/graphql.module
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- web/modules/contrib/graphql/graphql.module	(date 1526611957000)
++++ web/modules/contrib/graphql/graphql.module	(date 1526883623000)
+@@ -7,6 +7,7 @@
+ define('GRAPHQL_SCALAR_PLUGIN', 'scalar');
+ define('GRAPHQL_FIELD_PLUGIN', 'field');
+ define('GRAPHQL_MUTATION_PLUGIN', 'mutation');
++define('GRAPHQL_SUBSCRIPTION_PLUGIN', 'subscription');
+ define('GRAPHQL_INTERFACE_PLUGIN', 'interface');
+ define('GRAPHQL_UNION_TYPE_PLUGIN', 'union');
+ define('GRAPHQL_INPUT_TYPE_PLUGIN', 'input');
+@@ -126,6 +127,13 @@
+ function graphql_graphql_mutations_alter(&$definitions) {
+   _graphql_decorate_deprecated_type($definitions);
+ }
++
++/**
++ * Implements hook_graphql_mutations_alter().
++ */
++function graphql_graphql_subscriptions_alter(&$definitions) {
++  _graphql_decorate_deprecated_type($definitions);
++}
+ 
+ /**
+  * Implements hook_graphql_input_types_alter().
+Index: web/modules/contrib/graphql/graphql.services.yml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- web/modules/contrib/graphql/graphql.services.yml	(date 1526611957000)
++++ web/modules/contrib/graphql/graphql.services.yml	(date 1526883533000)
+@@ -140,6 +140,17 @@
+       - '\Drupal\graphql\Annotation\GraphQLMutation'
+       - '%graphql.config%'
+ 
++  plugin.manager.graphql.subscription:
++    class: Drupal\graphql\Plugin\SubscriptionPluginManager
++    arguments:
++      - 'Plugin/GraphQL/Subscriptions'
++      - '@container.namespaces'
++      - '@module_handler'
++      - '@cache.graphql.definitions'
++      - '\Drupal\graphql\Plugin\SubscriptionPluginInterface'
++      - '\Drupal\graphql\Annotation\GraphQLSubscription'
++      - '%graphql.config%'
++
+   # Plugin manager implementations for schema types.
+   plugin.manager.graphql.union:
+     class: Drupal\graphql\Plugin\TypePluginManager
+Index: web/modules/contrib/graphql/src/Plugin/SchemaBuilderInterface.php
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- web/modules/contrib/graphql/src/Plugin/SchemaBuilderInterface.php	(date 1526611957000)
++++ web/modules/contrib/graphql/src/Plugin/SchemaBuilderInterface.php	(date 1526614053000)
+@@ -26,6 +26,14 @@
+    */
+   public function hasMutations();
+ 
++  /**
++   * Checks if the schema has any subscriptions.
++   *
++   * @return bool
++   *   TRUE if the schema has any subscriptions, FALSE otherwise.
++   */
++  public function hasSubscriptions();
++
+   /**
+    * Checks if the schema contains the given type.
+    *
+@@ -56,6 +64,14 @@
+    */
+   public function getMutations();
+ 
++  /**
++   * Retrieves the subscriptions attached to the schema.
++   *
++   * @return array
++   *   The subscriptions for this schema.
++   */
++  public function getSubscriptions();
++
+   /**
+    * Retrieves all type instances from the schema.
+    *
+@@ -114,6 +130,17 @@
+    */
+   public function processMutations($mutations);
+ 
++  /**
++   * Processes a list of subscription definitions.
++   *
++   * @param array $subscriptions
++   *   An array of subscription definitions.
++   *
++   * @return array
++   *   The processed subscription definitions.
++   */
++  public function processSubscriptions($subscriptions);
++
+   /**
+    * Processes a list of field definitions.
+    *
+@@ -149,4 +176,4 @@
+    */
+   public function processType($type);
+ 
+-}
+\ No newline at end of file
++}
+Index: web/modules/contrib/graphql/src/Plugin/Deriver/PluggableSchemaDeriver.php
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- web/modules/contrib/graphql/src/Plugin/Deriver/PluggableSchemaDeriver.php	(date 1526611957000)
++++ web/modules/contrib/graphql/src/Plugin/Deriver/PluggableSchemaDeriver.php	(date 1526883189000)
+@@ -10,6 +10,7 @@
+ use Drupal\Core\Plugin\Discovery\ContainerDeriverInterface;
+ use Drupal\graphql\Plugin\FieldPluginManager;
+ use Drupal\graphql\Plugin\MutationPluginManager;
++use Drupal\graphql\Plugin\SubscriptionPluginManager;
+ use Drupal\graphql\Plugin\TypePluginManagerAggregator;
+ use Symfony\Component\DependencyInjection\ContainerInterface;
+ 
+@@ -36,6 +37,13 @@
+    */
+   protected $mutationManager;
+ 
++  /**
++   * The subscription manager service.
++   *
++   * @var \Drupal\graphql\Plugin\SubscriptionPluginManager
++   */
++  protected $subscriptionManager;
++
+   /**
+    * The type manager aggregator service.
+    *
+@@ -51,6 +59,7 @@
+       $basePluginId,
+       $container->get('plugin.manager.graphql.field'),
+       $container->get('plugin.manager.graphql.mutation'),
++      $container->get('plugin.manager.graphql.subscription'),
+       $container->get('graphql.type_manager_aggregator')
+     );
+   }
+@@ -63,6 +72,8 @@
+    * @param \Drupal\graphql\Plugin\FieldPluginManager $fieldManager
+    *   The field plugin manager.
+    * @param \Drupal\graphql\Plugin\MutationPluginManager $mutationManager
++   *   The mutation plugin manager.
++   * @param \Drupal\graphql\Plugin\SubscriptionPluginManager $subscriptionManager
+    *   The mutation plugin manager.
+    * @param \Drupal\graphql\Plugin\TypePluginManagerAggregator $typeManagers
+    *   The type manager aggregator service.
+@@ -71,11 +82,13 @@
+     $basePluginId,
+     FieldPluginManager $fieldManager,
+     MutationPluginManager $mutationManager,
++    SubscriptionPluginManager $subscriptionManager,
+     TypePluginManagerAggregator $typeManagers
+   ) {
+     $this->basePluginId = $basePluginId;
+     $this->fieldManager = $fieldManager;
+     $this->mutationManager = $mutationManager;
++    $this->subscriptionManager = $subscriptionManager;
+     $this->typeManagers = $typeManagers;
+   }
+ 
+@@ -90,8 +103,9 @@
+     $fieldAssocationMap = $this->buildFieldAssociationMap($this->fieldManager, $typeMap);
+     $fieldMap = $this->buildFieldMap($this->fieldManager, $fieldAssocationMap);
+     $mutationMap = $this->buildMutationMap($this->mutationManager);
++    $subscriptionMap = $this->buildSubscriptionMap($this->subscriptionManager);
+ 
+-    $managers = array_merge([$this->fieldManager, $this->mutationManager], iterator_to_array($this->typeManagers));
++    $managers = array_merge([$this->fieldManager, $this->mutationManager, $this->subscriptionManager], iterator_to_array($this->typeManagers));
+     $cacheTags = array_reduce($managers, function ($carry, CacheableDependencyInterface $current) {
+       return Cache::mergeTags($carry, $current->getCacheTags());
+     }, []);
+@@ -111,6 +125,7 @@
+       'field_association_map' => $fieldAssocationMap,
+       'field_map' => $fieldMap,
+       'mutation_map' => $mutationMap,
++      'subscription_map' => $subscriptionMap,
+       'schema_cache_tags' => $cacheTags,
+       'schema_cache_contexts' => $cacheContexts,
+       'schema_cache_max_age' => $cacheMaxAge,
+@@ -397,4 +412,40 @@
+     }, $mutations);
+   }
+ 
++  /**
++   * Builds an optimized representation of all registered subscriptions.
++   *
++   * @param \Drupal\graphql\Plugin\SubscriptionPluginManager $manager
++   *   The subscription plugin manager.
++   *
++   * @return array
++   *   The optimized list of all registered subscriptions.
++   */
++  protected function buildSubscriptionMap(SubscriptionPluginManager $manager) {
++    $definitions = $manager->getDefinitions();
++    $subscriptions = array_reduce(array_keys($definitions), function ($carry, $id) use ($definitions) {
++      $current = $definitions[$id];
++      $name = $current['name'];
++
++      if (empty($carry[$name]) || $carry[$name]['weight'] < $current['weight']) {
++        $carry[$name] = [
++          'id' => $id,
++          'class' => $current['class'],
++          'weight' => !empty($current['weight']) ? $current['weight'] : 0,
++        ];
++      }
++
++      return $carry;
++    }, []);
++
++    return array_map(function ($definition) use ($manager) {
++      $id = $definition['id'];
++      $instance = $manager->getInstance(['id' => $id]);
++
++      return [
++          'definition' => $instance->getDefinition(),
++        ] + $definition;
++    }, $subscriptions);
++  }
++
+ }
+Index: web/modules/contrib/graphql/src/Plugin/SubscriptionPluginManager.php
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- web/modules/contrib/graphql/src/Plugin/SubscriptionPluginManager.php	(date 1526883115000)
++++ web/modules/contrib/graphql/src/Plugin/SubscriptionPluginManager.php	(date 1526883115000)
+@@ -0,0 +1,120 @@
++<?php
++
++namespace Drupal\graphql\Plugin;
++
++use Drupal\Core\Cache\Cache;
++use Drupal\Core\Cache\CacheBackendInterface;
++use Drupal\Core\Extension\ModuleHandlerInterface;
++use Drupal\Core\Plugin\DefaultPluginManager;
++
++class SubscriptionPluginManager extends DefaultPluginManager {
++
++  /**
++   * Static cache of plugin instances.
++   *
++   * @var \Drupal\graphql\Plugin\SubscriptionPluginInterface[]
++   */
++  protected $instances;
++
++  /**
++   * FieldPluginManager constructor.
++   *
++   * @param bool|string $pluginSubdirectory
++   *   The plugin's subdirectory.
++   * @param \Traversable $namespaces
++   *   An object that implements \Traversable which contains the root paths
++   *   keyed by the corresponding namespace to look for plugin implementations.
++   * @param \Drupal\Core\Extension\ModuleHandlerInterface $moduleHandler
++   *   The module handler.
++   * @param \Drupal\Core\Cache\CacheBackendInterface $cacheBackend
++   *   The cache backend.
++   * @param string|null $pluginInterface
++   *   The interface each plugin should implement.
++   * @param string $pluginAnnotationName
++   *   The name of the annotation that contains the plugin definition.
++   * @param array $config
++   *   The configuration service parameter.
++   */
++  public function __construct(
++    $pluginSubdirectory,
++    \Traversable $namespaces,
++    ModuleHandlerInterface $moduleHandler,
++    CacheBackendInterface $cacheBackend,
++    $pluginInterface,
++    $pluginAnnotationName,
++    array $config
++  ) {
++    parent::__construct(
++      $pluginSubdirectory,
++      $namespaces,
++      $moduleHandler,
++      $pluginInterface,
++      $pluginAnnotationName
++    );
++
++    $this->alterInfo('graphql_subscriptions');
++    $this->useCaches(empty($config['development']));
++    $this->setCacheBackend($cacheBackend, 'subscriptions', ['graphql']);
++  }
++
++  /**
++   * {@inheritdoc}
++   */
++  public function getInstance(array $options) {
++    if (!isset($this->instances[$options['id']])) {
++      $this->instances[$options['id']] = $this->createInstance($options['id']);
++    }
++
++    return $this->instances[$options['id']];
++  }
++
++  /**
++   * {@inheritdoc}
++   */
++  public function clearCachedDefinitions() {
++    parent::clearCachedDefinitions();
++    $this->instances = [];
++  }
++
++  /**
++   * {@inheritdoc}
++   */
++  protected function setCachedDefinitions($definitions) {
++    $this->definitions = $definitions;
++    $this->cacheSet($this->cacheKey, $definitions, $this->getCacheMaxAge(), $this->getCacheTags());
++  }
++
++  /**
++   * {@inheritdoc}
++   */
++  public function getCacheTags() {
++    $definitions = $this->getDefinitions();
++    return array_reduce($definitions, function ($carry, $current) {
++      if (!empty($current['schema_cache_tags'])) {
++        return Cache::mergeTags($carry, $current['schema_cache_tags']);
++      }
++
++      return $carry;
++    }, $this->cacheTags);
++  }
++
++  /**
++   * {@inheritdoc}
++   */
++  public function getCacheMaxAge() {
++    $definitions = $this->getDefinitions();
++    $age = Cache::PERMANENT;
++    foreach ($definitions as $definition) {
++      if (!isset($definition['schema_cache_max_age'])) {
++        continue;
++      }
++
++      // Bail out early if the cache max age is 0.
++      if (($age = Cache::mergeMaxAges($age, $definition['schema_cache_max_age'])) === 0) {
++        return $age;
++      }
++    }
++
++    return $age;
++  }
++}
+Index: web/modules/contrib/graphql/src/Plugin/GraphQL/Schemas/SchemaPluginBase.php
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- web/modules/contrib/graphql/src/Plugin/GraphQL/Schemas/SchemaPluginBase.php	(date 1526611957000)
++++ web/modules/contrib/graphql/src/Plugin/GraphQL/Schemas/SchemaPluginBase.php	(date 1526883149000)
+@@ -8,6 +8,7 @@
+ use Drupal\graphql\GraphQL\Execution\ResolveContext;
+ use Drupal\graphql\Plugin\FieldPluginManager;
+ use Drupal\graphql\Plugin\MutationPluginManager;
++use Drupal\graphql\Plugin\SubscriptionPluginManager;
+ use Drupal\graphql\Plugin\SchemaBuilderInterface;
+ use Drupal\graphql\Plugin\SchemaPluginInterface;
+ use Drupal\graphql\Plugin\TypePluginManagerAggregator;
+@@ -33,6 +34,13 @@
+    */
+   protected $mutationManager;
+ 
++  /**
++   * The subscription plugin manager.
++   *
++   * @var \Drupal\graphql\Plugin\SubscriptionPluginManager
++   */
++  protected $subscriptionManager;
++
+   /**
+    * The type manager aggregator service.
+    *
+@@ -54,6 +62,13 @@
+    */
+   protected $mutations = [];
+ 
++  /**
++   * Static cache of subscription definitions.
++   *
++   * @var array
++   */
++  protected $subscriptions = [];
++
+   /**
+    * Static cache of type instances.
+    *
+@@ -71,6 +86,7 @@
+       $plugin_definition,
+       $container->get('plugin.manager.graphql.field'),
+       $container->get('plugin.manager.graphql.mutation'),
++      $container->get('plugin.manager.graphql.subscription'),
+       $container->get('graphql.type_manager_aggregator')
+     );
+   }
+@@ -88,6 +104,8 @@
+    *   The field plugin manager.
+    * @param \Drupal\graphql\Plugin\MutationPluginManager $mutationManager
+    *   The mutation plugin manager.
++   * @param \Drupal\graphql\Plugin\SubscriptionPluginManager $subscriptionManager
++   *   The subscription plugin manager.
+    * @param \Drupal\graphql\Plugin\TypePluginManagerAggregator $typeManagers
+    *   The type manager aggregator service.
+    */
+@@ -97,11 +115,13 @@
+     $pluginDefinition,
+     FieldPluginManager $fieldManager,
+     MutationPluginManager $mutationManager,
++    SubscriptionPluginManager $subscriptionManager,
+     TypePluginManagerAggregator $typeManagers
+   ) {
+     parent::__construct($configuration, $pluginId, $pluginDefinition);
+     $this->fieldManager = $fieldManager;
+     $this->mutationManager = $mutationManager;
++    $this->subscriptionManager = $subscriptionManager;
+     $this->typeManagers = $typeManagers;
+   }
+ 
+@@ -119,6 +139,15 @@
+         },
+       ]));
+     }
++
++    if ($this->hasSubscriptions()) {
++      $config->setSubscription(new ObjectType([
++        'name' => 'SubscriptionRoot',
++        'fields' => function () {
++          return $this->getSubscriptions();
++        },
++      ]));
++    }
+ 
+     $config->setQuery(new ObjectType([
+       'name' => 'QueryRoot',
+@@ -152,6 +181,13 @@
+     return !empty($this->pluginDefinition['mutation_map']);
+   }
+ 
++  /**
++   * {@inheritdoc}
++   */
++  public function hasSubscriptions() {
++    return !empty($this->pluginDefinition['subscription_map']);
++  }
++
+   /**
+    * {@inheritdoc}
+    */
+@@ -182,6 +218,13 @@
+     return $this->processMutations($this->pluginDefinition['mutation_map']);
+   }
+ 
++  /**
++   * {@inheritdoc}
++   */
++  public function getSubscriptions() {
++    return $this->processSubscriptions($this->pluginDefinition['subscription_map']);
++  }
++
+   /**
+    * {@inheritdoc}
+    */
+@@ -247,6 +290,13 @@
+     return array_map([$this, 'buildMutation'], $mutations);
+   }
+ 
++  /**
++   * {@inheritdoc}
++   */
++  public function processSubscriptions($subscriptions) {
++    return array_map([$this, 'buildSubscription'], $subscriptions);
++  }
++
+   /**
+    * {@inheritdoc}
+    */
+@@ -331,6 +381,24 @@
+     return $this->mutations[$mutation['id']];
+   }
+ 
++  /**
++   * Retrieves the subscription definition for a given field reference.
++   *
++   * @param array $mutation
++   *   The subscription reference.
++   *
++   * @return array
++   *   The subscription definition.
++   */
++  protected function buildSubscription($subscription) {
++    if (!isset($this->subscriptions[$subscription['id']])) {
++      $creator = [$subscription['class'], 'createInstance'];
++      $this->subscriptions[$subscription['id']] = $creator($this, $this->subscriptionManager, $subscription['definition'], $subscription['id']);
++    }
++
++    return $this->subscriptions[$subscription['id']];
++  }
++
+   /**
+    * {@inheritdoc}
+    */
+Index: web/modules/contrib/graphql/src/Plugin/SubscriptionPluginInterface.php
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- web/modules/contrib/graphql/src/Plugin/SubscriptionPluginInterface.php	(date 1526883226000)
++++ web/modules/contrib/graphql/src/Plugin/SubscriptionPluginInterface.php	(date 1526883226000)
+@@ -0,0 +1,28 @@
++<?php
++
++namespace Drupal\graphql\Plugin;
++
++use Drupal\Component\Plugin\PluginInspectionInterface;
++use Drupal\Component\Plugin\DerivativeInspectionInterface;
++
++interface SubscriptionPluginInterface extends PluginInspectionInterface, DerivativeInspectionInterface {
++
++  /**
++   * @param \Drupal\graphql\Plugin\SchemaBuilderInterface $builder
++   * @param \Drupal\graphql\Plugin\SubscriptionPluginManager $manager
++   * @param $definition
++   * @param $id
++   *
++   * @return mixed
++   */
++  public static function createInstance(SchemaBuilderInterface $builder, SubscriptionPluginManager $manager, $definition, $id);
++
++  /**
++   * Returns the plugin's type or field definition for the schema.
++   *
++   * @return array
++   *   The type or field definition of the plugin.
++   */
++  public function getDefinition();
++
++}
+Index: web/modules/contrib/graphql/src/Annotation/GraphQLSubscription.php
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- web/modules/contrib/graphql/src/Annotation/GraphQLSubscription.php	(date 1526883039000)
++++ web/modules/contrib/graphql/src/Annotation/GraphQLSubscription.php	(date 1526883039000)
+@@ -0,0 +1,42 @@
++<?php
++
++namespace Drupal\graphql\Annotation;
++
++/**
++ * Annotation for GraphQL mutation plugins.
++ *
++ * @Annotation
++ */
++class GraphQLSubscription extends GraphQLAnnotationBase {
++
++  /**
++   * {@inheritdoc}
++   */
++  public $pluginType = GRAPHQL_SUBSCRIPTION_PLUGIN;
++
++  /**
++   * The field type.
++   *
++   * Must be a registered Interface, Type or Scalar.
++   *
++   * @var string
++   */
++  public $type = NULL;
++
++  /**
++   * The field arguments.
++   *
++   * Array keyed by argument names with Scalar or Input Type names as values.
++   *
++   * @var array
++   */
++  public $arguments = [];
++
++  /**
++   * The deprecation reason or FALSE if the field is not deprecated.
++   *
++   * @var string|bool
++   */
++  public $deprecated = FALSE;
++
++}

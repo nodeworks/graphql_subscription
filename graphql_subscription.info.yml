@@ -1,0 +1,9 @@
+name: GraphQL Subscription
+description: GraphQL subscriptions for the GraphQL module
+core: 8.x
+type: module
+package: GraphQL
+dependencies:
+  - graphql
+  - graphql_core
+  - graphql_mutation

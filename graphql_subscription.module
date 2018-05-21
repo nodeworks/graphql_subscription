@@ -1,0 +1,28 @@
+<?php
+
+/**
+ * @file
+ * GraphQL Subscription Functionality.
+ */
+
+/**
+ * Implements hook_rebuild().
+ */
+function graphql_subscription_rebuild() {
+  try {
+    $client = new GuzzleHttp\Client();
+    $introspection_query = '{"query":"query IntrospectionQuery {\n    __schema {\n      queryType { name }\n      mutationType { name }\n      subscriptionType { name }\n      types {\n        ...FullType\n      }\n      directives {\n        name\n        locations\n        args {\n          ...InputValue\n        }\n      }\n    }\n  }\n  fragment FullType on __Type {\n    kind\n    name\n    fields(includeDeprecated: true) {\n      name\n      args {\n        ...InputValue\n      }\n      type {\n        ...TypeRef\n      }\n      isDeprecated\n      deprecationReason\n    }\n    inputFields {\n      ...InputValue\n    }\n    interfaces {\n      ...TypeRef\n    }\n    enumValues(includeDeprecated: true) {\n      name\n      isDeprecated\n      deprecationReason\n    }\n    possibleTypes {\n      ...TypeRef\n    }\n  }\n  fragment InputValue on __InputValue {\n    name\n    type { ...TypeRef }\n    defaultValue\n  }\n  fragment TypeRef on __Type {\n    kind\n    name\n    ofType {\n      kind\n      name\n      ofType {\n        kind\n        name\n        ofType {\n          kind\n          name\n          ofType {\n            kind\n            name\n            ofType {\n              kind\n              name\n              ofType {\n                kind\n                name\n                ofType {\n                  kind\n                  name\n                }\n              }\n            }\n          }\n        }\n      }\n    }\n  }","variables":null,"operationName":"IntrospectionQuery"}';
+    $introspection = $client->post('http://api_subscriptions_test.dev.com/graphql', [
+      'headers' => [
+        'Content-Type' => 'application/json',
+      ],
+      'body' => $introspection_query,
+    ]);
+
+    $response = (string) $introspection->getBody();
+    file_save_data($response, 'public://schema.json', 1);
+  }
+  catch(\GuzzleHttp\Exception\RequestException $e) {
+    // Do nothing.
+  }
+}
