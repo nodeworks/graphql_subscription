@@ -1,14 +1,10 @@
 Index: web/modules/contrib/graphql_mutation/src/Plugin/GraphQL/Mutations/EntityMutationInputTrait.php
-IDEA additional info:
-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
-<+>UTF-8
-===================================================================
---- web/modules/contrib/graphql_mutation/src/Plugin/GraphQL/Mutations/EntityMutationInputTrait.php	(date 1526611957000)
-+++ web/modules/contrib/graphql_mutation/src/Plugin/GraphQL/Mutations/EntityMutationInputTrait.php	(date 1526832101000)
+--- web/modules/contrib/graphql_mutation/src/Plugin/GraphQL/Mutations/EntityMutationInputTrait.php
++++ web/modules/contrib/graphql_mutation/src/Plugin/GraphQL/Mutations/EntityMutationInputTrait.php
 @@ -2,12 +2,12 @@
- 
+
  namespace Drupal\graphql_mutation\Plugin\GraphQL\Mutations;
- 
+
 -use Drupal\graphql\GraphQL\Schema\Schema;
 -use Drupal\graphql\GraphQL\Type\InputObjectType;
 -use Drupal\graphql\Plugin\GraphQL\PluggableSchemaPluginInterface;
@@ -21,10 +17,10 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 +use GraphQL\Type\Definition\ResolveInfo;
 +use GraphQL\Type\Definition\ScalarType;
 +use GraphQL\Type\Definition\NonNull;
- 
+
  trait EntityMutationInputTrait {
- 
-@@ -16,35 +16,54 @@
+
+@@ -16,37 +16,56 @@
     *
     * Loops over all input values and assigns them to their original field names.
     *
@@ -49,7 +45,7 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 +    /** @var \GraphQL\Type\Definition\ObjectType $defs */
 +    $defs = $info->parentType;
 +    $inputType = $info->parentType;
- 
+
 +    /** @var \GraphQL\Type\Definition\FieldDefinition $fields */
 +    $fields = $defs->getField($info->fieldName);
      return array_reduce(array_keys($args['input']), function($carry, $current) use ($fields, $args, $info, $inputType) {
@@ -73,31 +69,32 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 +      $fieldName = $inputObject->name;
 +      $actualFieldName = $this->fromCamelCase($fieldName);
        $fieldValue = $args['input'][$current];
- 
+
 -      /** @var \Drupal\graphql\GraphQL\Type\InputObjectType $namedType */
 -      $namedType = $nullableType->getNamedType();
 -      if ($namedType instanceof AbstractScalarType) {
 -        return $carry + [$fieldName => $fieldValue];
--      }
--
++      /** @var \GraphQL\Type\Definition\InputObjectType $namedType */
++      if ($fieldType instanceof ScalarType) {
++        return $carry + [$actualFieldName => $fieldValue];
+       }
+
 -      if ($namedType instanceof InputObjectType) {
 -        $fieldValue = $isMulti ? array_map(function($value) use ($namedType, $info) {
 -          return $this->extractEntityFieldInput($value, $namedType, $info);
 -        }, $fieldValue) : $this->extractEntityFieldInput($fieldValue, $namedType, $info);
-+      /** @var \GraphQL\Type\Definition\InputObjectType $namedType */
-+      if ($fieldType instanceof ScalarType) {
-+        return $carry + [$actualFieldName => $fieldValue];
-+      }
-+
 +      if ($fieldType instanceof InputObjectType) {
 +        $isMulti = $nullableType instanceof ListOfType;
 +        $fieldValue = $isMulti ? array_map(function($value) use ($fieldType, $info) {
 +          return $this->extractEntityFieldInput($value, $fieldType, $info);
 +        }, $fieldValue) : $this->extractEntityFieldInput($fieldValue, $fieldType, $info);
- 
-         return $carry + [$fieldName => $fieldValue];
+
+-        return $carry + [$fieldName => $fieldValue];
++        return $carry + [$actualFieldName => $fieldValue];
        }
-@@ -61,22 +80,40 @@
+
+       return $carry;
+@@ -61,22 +80,40 @@ protected function extractEntityInput(array $args, ResolveInfo $info) {
     *
     * @param array $fieldValue
     *   The field values keyed by property name.
@@ -111,21 +108,18 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
     * @return array
     *   The extracted field values with their proper, internal property names.
     */
--  protected function extractEntityFieldInput(array $fieldValue, InputObjectType $fieldType, ResolveInfo $info) {
+   protected function extractEntityFieldInput(array $fieldValue, InputObjectType $fieldType, ResolveInfo $info) {
 -    $properties = $fieldType->getPlugin()->getPluginDefinition()['fields'];
-+  protected function extractEntityFieldInput(array $fieldValue, \GraphQL\Type\Definition\InputObjectType $fieldType, ResolveInfo $info) {
 +    $properties = $fieldType->getFields();
      return array_reduce(array_keys($fieldValue), function($carry, $current) use ($properties, $fieldValue) {
 -      $key = $properties[$current]['property_name'];
-+      $key = $properties[$current]->name;
++      $key = $this->fromCamelCase($properties[$current]->name);
        $value = $fieldValue[$current];
- 
+
        return $carry + [$key => $value];
      }, []);
    }
- 
--}
-\ No newline at end of file
+
 +  /**
 +   * Convert camel cased strings to underscores.
 +   *
@@ -144,4 +138,4 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 +    return implode('_', $ret);
 +  }
 +
-+}
+ }
