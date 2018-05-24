@@ -1,0 +1,13 @@
+{
+    "name": "nodeworks/graphql_subscription",
+    "description": "Drupal 8 GraphQL Subscription",
+    "type": "drupal-module",
+    "license": "GPL-2.0",
+    "authors": [
+        {
+            "name": "Rob Lee",
+            "email": "rob@nodeworks.com"
+        }
+    ],
+    "require": {}
+}
