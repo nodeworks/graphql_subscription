@@ -1,7 +1,7 @@
 import { makeExecutableSchema } from 'graphql-tools';
 import { printSchema, buildClientSchema } from 'graphql';
 import { resolvers } from './resolvers';
-import Schema from '../../../../sites/default/files/schema.json';
+import Schema from '../schema.json';
 
 const shorthandSchema = buildClientSchema(Schema.data);
 const fullSchema = printSchema(shorthandSchema);

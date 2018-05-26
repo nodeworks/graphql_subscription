@@ -1,5 +1,5 @@
 import { PubSub, withFilter } from 'graphql-subscriptions';
-import Schema from '../../../../sites/default/files/schema.json';
+import Schema from '../schema.json';
 
 const subs = Schema.data.__schema.types.filter(val => val.name === 'SubscriptionRoot');
 const subscriptions = {};
