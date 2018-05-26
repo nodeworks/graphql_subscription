@@ -7,7 +7,6 @@
 
 namespace Drupal\graphql_subscription\EventSubscriber;
 
-use Symfony\Component\HttpKernel\Event\GetResponseEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
 use Symfony\Component\HttpKernel\Event\FilterResponseEvent;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
@@ -16,16 +15,6 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
  * Event Subscriber for GraphQL Subscriptions.
  */
 class GraphQLSubscriptionEventSubscriber implements EventSubscriberInterface {
-
-  /**
-   * Request event.
-   *
-   * @param GetResponseEvent $request
-   *   The request object.
-   */
-  public function onRequest(GetResponseEvent $request) {
-
-  }
 
   /**
    * Code that should be triggered on event specified
@@ -40,6 +29,11 @@ class GraphQLSubscriptionEventSubscriber implements EventSubscriberInterface {
       $types = \Drupal::service('plugin.manager.graphql.type')->getDefinitions();
 
       if ($graphql) {
+        $port = 4000;
+        if (getenv('GRAPHQL_SUBSCRIPTION_PORT')) {
+          $port = getenv('GRAPHQL_SUBSCRIPTION_PORT');
+        }
+
         $request_data = $request->getContent();
         $decoded_request_data = json_decode($request_data);
         $decoded_request_query = json_decode($decoded_request_data->query);
@@ -87,7 +81,7 @@ class GraphQLSubscriptionEventSubscriber implements EventSubscriberInterface {
 
         $client = new \GuzzleHttp\Client();
         $body = '{"query":"mutation {\n  mutationTrigger(return_type: \"' . $return_type . '\", mutation: \"' . $operation[0] . '\", data: \"' . urlencode($response_data) . '\")\n}","variables":null}';
-        $client->post('http://localhost:4000/graphql', [
+        $client->post('http://localhost:' . $port . '/graphql', [
           'headers' => [
             'Content-Type' => 'application/json',
           ],
@@ -105,7 +99,6 @@ class GraphQLSubscriptionEventSubscriber implements EventSubscriberInterface {
    */
   public static function getSubscribedEvents() {
     $events[KernelEvents::RESPONSE][] = ['onRespond'];
-    $events[KernelEvents::REQUEST][] = ['onRequest'];
     return $events;
   }
 
